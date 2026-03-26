@@ -284,3 +284,7 @@ def _csv_escape(value: str) -> str:
     escaped = value.replace('"', '""')
     return f'"{escaped}"'
 
+
+if __name__ == "__main__":
+    main()
+

@@ -1,6 +1,6 @@
 # OTU-SpeechRecognitionTest
 
-Benchmark harness for comparing several open-source ASR systems against the speech data under [`data/`](./data).
+Benchmark harness for comparing open-source ASR systems and testing open-source TTS systems against the speech data under [`data/`](./data).
 
 ## What it measures
 
@@ -14,7 +14,62 @@ The harness discovers locale folders under `data/` that contain a `transcription
 filename.wav: Reference transcript
 ```
 
-## Included engines and models
+## TTS Workbench
+
+The repo includes a `tts_bench` workbench for generating audio from the texts in `data/fr-ca/transcriptions.txt` so humans can listen to the outputs directly.
+
+Currently wired engines:
+
+- Kokoro
+- Chatterbox Multilingual
+- Chatterbox
+- Chatterbox Turbo
+- F5-TTS (opt-in, experimental on this dataset)
+
+The TTS run uses one reference clip per locale for the voice-cloning engines. By default, it picks the first transcript entry in that locale, which for `fr-ca` is `interview-1.wav`. The benchmark excludes that prompt clip from the generated target set so cloned-voice models are only timed on held-out texts. You can override the prompt clip with `-ReferenceSample`.
+
+Install one or more TTS backends:
+
+```powershell
+.\scripts\install-tts-backends.ps1
+```
+
+Or install a subset:
+
+```powershell
+.\scripts\install-tts-backends.ps1 -Engine kokoro,chatterbox,f5-tts
+```
+
+For CUDA-backed Docker runs, make sure Docker Desktop is running with NVIDIA GPU support enabled. The default GPU matrix uses local Kokoro plus Docker-backed Chatterbox variants.
+
+Run the TTS workbench on the `fr-ca` texts:
+
+```powershell
+.\scripts\run-tts-benchmark.ps1 -Device cuda
+```
+
+Or limit the matrix explicitly:
+
+```powershell
+.\scripts\run-tts-benchmark.ps1 -Include kokoro:hexgrad/kokoro-82m -Include chatterbox:ResembleAI/chatterbox-multilingual -ReferenceSample interview-1.wav
+```
+
+Each TTS run writes a timestamped directory under `outputs/tts/` containing:
+
+- `tts-benchmark-<timestamp>.json`: full per-sample timing and output paths
+- `tts-summary-<timestamp>.csv`: aggregated timing summary
+- `tts-summary-<timestamp>.md`: readable summary table
+- `audio/`: generated WAV files grouped by engine, model, and locale
+
+Notes:
+
+- The TTS summary focuses on wall-clock generation time and generated audio duration.
+- `kokoro` uses the built-in French pipeline and defaults to the `ff_siwis` voice.
+- `chatterbox` variants use the selected reference clip for zero-shot voice cloning.
+- `f5-tts` currently uses the official upstream Docker image and CLI when selected explicitly.
+- `xtts-v2` is not part of the default matrix on this Windows host because the available local and Docker paths were not stable enough for repeatable runs.
+
+## ASR Engines and Models
 
 - Whisper: `tiny`, `base`, `small`, `medium`, `large-v3`
 - Moonshine: `moonshine/tiny`, `moonshine/base`
@@ -31,7 +86,7 @@ Notes:
 
 ## Environment
 
-This project is set up for Python `3.10` or `3.11`.
+This project is set up for Python `3.11`.
 
 Recommended flow with `uv`:
 
@@ -47,16 +102,50 @@ If you only want part of the matrix:
 .\scripts\run-benchmark.ps1 -Language fr -Engine whisper,canary
 ```
 
-## Aggregated GPU Results
+## How To Reproduce The ASR GPU Table
 
-The consolidated GPU comparison for the `data/fr-ca` set is also stored in [`outputs/gpu-comparison-20260325.md`](./outputs/gpu-comparison-20260325.md) and [`outputs/gpu-comparison-20260325.csv`](./outputs/gpu-comparison-20260325.csv).
+Install the dependencies:
 
-These numbers were obtained on March 25, 2026 by running the benchmark on this Windows machine with:
+```powershell
+.\scripts\install-backends.ps1 -Extras whisper,moonshine,nemo,espnet,funasr
+```
 
-- CUDA-enabled PyTorch for Whisper and NeMo-based models
-- local Hugging Face/model caches under the repo
+Run the same model groups used for the consolidated table:
+
+```powershell
+.\scripts\run-benchmark.ps1 -Engine whisper -Language fr -Device cuda
+.\scripts\run-benchmark.ps1 -Include canary:nvidia/canary-180m-flash -Language fr -Device cuda
+.\scripts\run-benchmark.ps1 -Include canary:nvidia/canary-1b -Language fr -Device cuda
+.\scripts\run-benchmark.ps1 -Include canary:nvidia/canary-1b-flash -Language fr -Device cuda
+.\scripts\run-benchmark.ps1 -Engine parakeet -Language fr -Device cuda
+.\scripts\run-benchmark.ps1 -Engine moonshine -Language fr -Device cuda
+.\scripts\run-benchmark.ps1 -Include owsm-ctc:espnet/owsm_ctc_v3.1_1B -Language fr -Device cuda
+.\scripts\run-benchmark.ps1 -Include funasr:iic/SenseVoiceSmall -Language fr -Device cuda
+```
+
+Then compare the resulting `benchmark-summary-<timestamp>.md` files, or use the consolidated files under `outputs/` as the reference format.
+
+## Outputs
+
+Each run writes three files under `outputs/`:
+
+- `benchmark-<timestamp>.json`: full per-sample results
+- `benchmark-summary-<timestamp>.csv`: aggregated metrics by model
+- `benchmark-summary-<timestamp>.md`: readable summary table
+
+## Benchmark Results
+
+### Testing Environment
+
+The consolidated benchmark sections below were run on the same Windows machine unless noted otherwise.
+
+Runtime setup:
+
+- CUDA-enabled PyTorch for Whisper and NeMo-based ASR models
+- Docker Desktop with NVIDIA GPU support for the Docker-backed TTS runs
+- local Hugging Face and model caches under the repo
 - repo-local audio preprocessing for Windows compatibility
-- the benchmark harness in `src/asr_bench`
+- benchmark harnesses in `src/asr_bench` and `src/tts_bench`
 
 Test machine:
 
@@ -66,6 +155,12 @@ Test machine:
 - GPU: `NVIDIA GeForce RTX 4060 Laptop GPU`, driver `591.74`, `8188 MiB` VRAM
 - Integrated GPU: `Intel UHD Graphics`
 - System memory: about `31.7 GiB`
+
+### Aggregated ASR GPU Results
+
+The consolidated GPU comparison for the `data/fr-ca` set is also stored in [`outputs/gpu-comparison-20260325.md`](./outputs/gpu-comparison-20260325.md) and [`outputs/gpu-comparison-20260325.csv`](./outputs/gpu-comparison-20260325.csv).
+
+These ASR numbers were obtained on March 25, 2026.
 
 Successful runs:
 
@@ -102,33 +197,31 @@ Summary:
 - Fastest useful non-Whisper multilingual result: `espnet/owsm_ctc_v3.1_1B`
 - Moonshine did not receive real GPU acceleration on this machine because the ONNX Runtime CUDA provider could not load `cublasLt64_12.dll`
 
-## How To Reproduce The GPU Table
+### Aggregated TTS GPU Results
 
-Install the dependencies:
+The consolidated TTS comparison for the `data/fr-ca` set is stored in [`outputs/tts/tts-run-20260326T212352Z/tts-summary-20260326T212352Z.md`](./outputs/tts/tts-run-20260326T212352Z/tts-summary-20260326T212352Z.md) and [`outputs/tts/tts-run-20260326T212352Z/tts-summary-20260326T212352Z.csv`](./outputs/tts/tts-run-20260326T212352Z/tts-summary-20260326T212352Z.csv).
 
-```powershell
-.\scripts\install-backends.ps1 -Extras whisper,moonshine,nemo,espnet,funasr
-```
+These TTS numbers were obtained on March 26, 2026 over the 4 held-out `fr-ca` texts, using `interview-1.wav` as the cloning prompt where applicable.
 
-Run the same model groups used for the consolidated table:
+Successful runs:
 
-```powershell
-.\scripts\run-benchmark.ps1 -Engine whisper -Language fr -Device cuda
-.\scripts\run-benchmark.ps1 -Include canary:nvidia/canary-180m-flash -Language fr -Device cuda
-.\scripts\run-benchmark.ps1 -Include canary:nvidia/canary-1b -Language fr -Device cuda
-.\scripts\run-benchmark.ps1 -Include canary:nvidia/canary-1b-flash -Language fr -Device cuda
-.\scripts\run-benchmark.ps1 -Engine parakeet -Language fr -Device cuda
-.\scripts\run-benchmark.ps1 -Engine moonshine -Language fr -Device cuda
-.\scripts\run-benchmark.ps1 -Include owsm-ctc:espnet/owsm_ctc_v3.1_1B -Language fr -Device cuda
-.\scripts\run-benchmark.ps1 -Include funasr:iic/SenseVoiceSmall -Language fr -Device cuda
-```
+| engine | model_id | avg_elapsed_seconds | avg_generated_duration_seconds | avg_rtf | notes |
+| --- | --- | --- | --- | --- | --- |
+| kokoro | hexgrad/kokoro-82m | 7.2080 | 25.3750 | 0.2848 | Fastest TTS model in this matrix by a wide margin. |
+| chatterbox | ResembleAI/chatterbox | 162.9319 | 31.9500 | 5.1943 | English-only baseline; slower, but generated the longest audio on this set. |
+| chatterbox | ResembleAI/chatterbox-multilingual | 137.7789 | 22.0200 | 6.3773 | Best language-matched Chatterbox variant for this French dataset. |
+| chatterbox | ResembleAI/chatterbox-turbo | 140.3128 | 22.3600 | 7.1170 | Slightly faster wall-clock than base Chatterbox, but worse RTF than the multilingual checkpoint. |
 
-Then compare the resulting `benchmark-summary-<timestamp>.md` files, or use the consolidated files under `outputs/` as the reference format.
+Excluded or unstable runs:
 
-## Outputs
+| engine | model_id | status | reason |
+| --- | --- | --- | --- |
+| f5-tts | F5TTS_v1_Base | unstable | Failed on the full Quebec French prompts with tensor-size mismatches even through the official upstream Docker image and CLI. |
+| xtts-v2 | tts_models/multilingual/multi-dataset/xtts_v2 | failed | Local and Docker-backed paths were not stable enough on this Windows host for repeatable runs. |
 
-Each run writes three files under `outputs/`:
+Summary:
 
-- `benchmark-<timestamp>.json`: full per-sample results
-- `benchmark-summary-<timestamp>.csv`: aggregated metrics by model
-- `benchmark-summary-<timestamp>.md`: readable summary table
+- Fastest overall: `kokoro`
+- Fastest Chatterbox variant by wall-clock time: `ResembleAI/chatterbox-multilingual`
+- Lowest Chatterbox RTF in this run: `ResembleAI/chatterbox`
+- The default TTS matrix in this repo currently stays on the models that produced repeatable audio on this machine
