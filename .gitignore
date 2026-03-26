@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Local benchmark artifacts
+.uv-cache/
+outputs/
+.uv-python/
+.cache/
+.tmp/
