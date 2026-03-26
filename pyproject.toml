@@ -1,9 +1,9 @@
 [project]
 name = "asr-bench"
 version = "0.1.0"
-description = "Benchmark open-source ASR models against local speech datasets."
+description = "Benchmark open-source ASR and TTS models against local speech datasets."
 readme = "README.md"
-requires-python = ">=3.10,<3.12"
+requires-python = ">=3.11,<3.12"
 dependencies = [
   "jiwer>=3.0,<4.0",
   "numpy>=1.26,<3.0",
@@ -29,13 +29,38 @@ espnet = [
 funasr = [
   "funasr>=1.1.0",
 ]
+kokoro = [
+  "kokoro>=0.9.4",
+]
+chatterbox = [
+  "chatterbox-tts>=0.1.7",
+]
+f5tts = [
+  "f5-tts>=1.1.18",
+]
+xtts = [
+  "TTS>=0.22.0",
+]
 
 [project.scripts]
 asr-bench = "asr_bench.cli:main"
+tts-bench = "tts_bench.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/asr_bench"]
+packages = ["src/asr_bench", "src/tts_bench"]
+
+[tool.uv]
+conflicts = [
+  [
+    { extra = "chatterbox" },
+    { extra = "espnet" },
+  ],
+  [
+    { extra = "xtts" },
+    { extra = "espnet" },
+  ],
+]

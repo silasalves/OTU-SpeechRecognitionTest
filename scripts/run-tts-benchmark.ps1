@@ -1,8 +1,11 @@
 param(
     [string]$Language = "fr",
     [string]$Device = "auto",
+    [string[]]$Locale = @("fr-ca"),
     [string[]]$Engine = @(),
-    [string[]]$Include = @()
+    [string[]]$Include = @(),
+    [string]$ReferenceSample = "",
+    [int]$Limit = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,7 +16,6 @@ $env:XDG_CACHE_HOME = Join-Path $root ".cache"
 $env:HF_HOME = Join-Path $env:XDG_CACHE_HOME "huggingface"
 $env:TRANSFORMERS_CACHE = Join-Path $env:HF_HOME "hub"
 $env:TORCH_HOME = Join-Path $env:XDG_CACHE_HOME "torch"
-$env:WHISPER_CACHE_DIR = Join-Path $env:XDG_CACHE_HOME "whisper"
 $env:TEMP = Join-Path $root ".tmp"
 $env:TMP = $env:TEMP
 $env:PYTHONPATH = $root
@@ -24,12 +26,17 @@ $args = @(
     "--no-sync",
     "python",
     "-m",
-    "asr_bench.cli",
+    "tts_bench.cli",
     "--data-root", (Join-Path $root "data"),
-    "--output-dir", (Join-Path $root "outputs"),
+    "--output-dir", (Join-Path $root "outputs\\tts"),
     "--language", $Language,
     "--device", $Device
 )
+
+foreach ($localeName in $Locale) {
+    $args += "--locale"
+    $args += $localeName
+}
 
 foreach ($engineName in $Engine) {
     $args += "--engine"
@@ -39,6 +46,16 @@ foreach ($engineName in $Engine) {
 foreach ($modelName in $Include) {
     $args += "--include"
     $args += $modelName
+}
+
+if ($ReferenceSample) {
+    $args += "--reference-sample"
+    $args += $ReferenceSample
+}
+
+if ($Limit -gt 0) {
+    $args += "--limit"
+    $args += $Limit
 }
 
 uv @args
