@@ -4,6 +4,7 @@ import argparse
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import sys
 import time
@@ -41,6 +42,7 @@ class SampleResult:
 
 
 def main() -> None:
+    _load_dotenv(Path.cwd() / ".env")
     args = parse_args()
     data_root = args.data_root.resolve()
     output_root = args.output_dir.resolve()
@@ -414,6 +416,21 @@ def _format_float(value: float | None) -> str:
 def _csv_escape(value: str) -> str:
     escaped = value.replace('"', '""')
     return f'"{escaped}"'
+
+
+def _load_dotenv(path: Path) -> None:
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        cleaned = value.strip().strip('"').strip("'")
+        os.environ[key] = cleaned
 
 
 if __name__ == "__main__":

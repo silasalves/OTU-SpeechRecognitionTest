@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from pathlib import PurePosixPath
+import os
 import subprocess
 
 _REPO_ROOT = Path.cwd().resolve()
@@ -71,6 +72,10 @@ def run_container(
         command.extend(["-w", workdir])
     if wants_gpu:
         command.extend(["--gpus", "all"])
+    for key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
+        value = os.environ.get(key, "").strip()
+        if value:
+            command.extend(["-e", f"{key}={value}"])
     for key, value in env.items():
         command.extend(["-e", f"{key}={value}"])
     if entrypoint:
