@@ -96,6 +96,30 @@ class ChatterboxAdapter(BaseAdapter):
         sf.write(str(request.output_path), audio, self._model.sr)
 
 
+class KittenTtsAdapter(BaseAdapter):
+    def __init__(self, model_id: str, context: BenchmarkContext) -> None:
+        super().__init__(model_id, context)
+        try:
+            from kittentts import KittenTTS
+        except ImportError as exc:
+            raise AdapterError(_missing_dependency("kittentts")) from exc
+        cache_dir = str(Path.cwd() / ".cache" / "huggingface")
+        self._model = KittenTTS(model_id, cache_dir=cache_dir)
+        voices = list(getattr(self._model, "available_voices", []) or [])
+        requested_voice = os.environ.get("TTS_BENCH_KITTEN_VOICE", "Jasper")
+        self._voice = requested_voice if requested_voice in voices else (voices[0] if voices else requested_voice)
+
+    def synthesize(self, request: SynthesisRequest) -> None:
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        audio = self._model.generate(
+            request.text,
+            voice=self._voice,
+            speed=1.0,
+            clean_text=True,
+        )
+        sf.write(str(request.output_path), np.asarray(audio, dtype=np.float32), 24000)
+
+
 class DockerBackedChatterboxAdapter(BaseAdapter):
     def __init__(self, model_id: str, context: BenchmarkContext) -> None:
         super().__init__(model_id, context)
@@ -191,6 +215,25 @@ class DockerBackedF5TtsAdapter(BaseAdapter):
         )
 
 
+class DockerBackedOrpheusTtsAdapter(BaseAdapter):
+    def __init__(self, model_id: str, context: BenchmarkContext) -> None:
+        super().__init__(model_id, context)
+        docker_dir = Path.cwd() / "docker" / "tts" / "orpheus"
+        ensure_image("otu-tts-bench-orpheus:latest", docker_dir)
+
+    def synthesize(self, request: SynthesisRequest) -> None:
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        run_container(
+            image_tag="otu-tts-bench-orpheus:latest",
+            wants_gpu=self.context.device == "cuda",
+            env={
+                "MODEL_ID": self.model_id,
+                "TEXT": request.text,
+                "OUTPUT_PATH": container_path(request.output_path),
+            },
+        )
+
+
 class XttsV2Adapter(BaseAdapter):
     def __init__(self, model_id: str, context: BenchmarkContext) -> None:
         super().__init__(model_id, context)
@@ -241,12 +284,16 @@ class DockerBackedXttsV2Adapter(BaseAdapter):
 def create_adapter(engine: str, model_id: str, context: BenchmarkContext) -> BaseAdapter:
     if engine == "kokoro":
         return KokoroAdapter(model_id, context)
+    if engine == "kitten-tts":
+        return KittenTtsAdapter(model_id, context)
     if engine == "chatterbox":
         if context.device == "cuda" or model_id != "ResembleAI/chatterbox-multilingual":
             return DockerBackedChatterboxAdapter(model_id, context)
         return ChatterboxAdapter(model_id, context)
     if engine == "f5-tts":
         return DockerBackedF5TtsAdapter(model_id, context)
+    if engine == "orpheus-tts":
+        return DockerBackedOrpheusTtsAdapter(model_id, context)
     if engine == "xtts-v2":
         return DockerBackedXttsV2Adapter(model_id, context)
     raise AdapterError(f"Unknown TTS engine: {engine}")

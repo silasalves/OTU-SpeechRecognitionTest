@@ -9,14 +9,16 @@ $env:UV_PYTHON_INSTALL_DIR = Join-Path $root ".uv-python"
 
 $engineToExtra = @{
     "kokoro" = "kokoro"
+    "kitten-tts" = "kittentts"
     "chatterbox" = "chatterbox"
     "f5-tts" = "f5tts"
+    "orpheus-tts" = ""
     "xtts-v2" = "xtts"
 }
 
 $selectedEngines = $Engine
 if ($selectedEngines.Count -eq 0) {
-    $selectedEngines = @("kokoro", "chatterbox", "f5-tts", "xtts-v2")
+    $selectedEngines = @("kokoro", "kitten-tts", "chatterbox", "f5-tts", "orpheus-tts", "xtts-v2")
 }
 
 $extras = New-Object System.Collections.Generic.List[string]
@@ -25,6 +27,9 @@ foreach ($engineName in $selectedEngines) {
         throw "Unknown TTS engine: $engineName"
     }
     $extra = $engineToExtra[$engineName]
+    if ([string]::IsNullOrWhiteSpace($extra)) {
+        continue
+    }
     if (-not $extras.Contains($extra)) {
         $extras.Add($extra)
     }
