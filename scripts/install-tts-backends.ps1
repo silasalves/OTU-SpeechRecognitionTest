@@ -12,13 +12,17 @@ $engineToExtra = @{
     "kitten-tts" = "kittentts"
     "chatterbox" = "chatterbox"
     "f5-tts" = "f5tts"
+    "voxcpm" = ""
+    "qwen3-tts" = ""
+    "dia2" = ""
+    "glm-tts" = ""
     "orpheus-tts" = ""
     "xtts-v2" = "xtts"
 }
 
 $selectedEngines = $Engine
 if ($selectedEngines.Count -eq 0) {
-    $selectedEngines = @("kokoro", "kitten-tts", "chatterbox", "f5-tts", "orpheus-tts", "xtts-v2")
+    $selectedEngines = @("kokoro", "kitten-tts", "chatterbox", "f5-tts", "voxcpm", "qwen3-tts", "dia2", "glm-tts", "orpheus-tts", "xtts-v2")
 }
 
 $extras = New-Object System.Collections.Generic.List[string]

@@ -215,6 +215,99 @@ class DockerBackedF5TtsAdapter(BaseAdapter):
         )
 
 
+class DockerBackedVoxCpmAdapter(BaseAdapter):
+    def __init__(self, model_id: str, context: BenchmarkContext) -> None:
+        super().__init__(model_id, context)
+        docker_dir = Path.cwd() / "docker" / "tts" / "voxcpm"
+        ensure_image("otu-tts-bench-voxcpm:latest", docker_dir)
+
+    def synthesize(self, request: SynthesisRequest) -> None:
+        if request.reference_audio_path is None:
+            raise AdapterError("VoxCPM requires a reference audio prompt.")
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        run_container(
+            image_tag="otu-tts-bench-voxcpm:latest",
+            wants_gpu=self.context.device == "cuda",
+            env={
+                "MODEL_ID": self.model_id,
+                "TEXT": request.text,
+                "OUTPUT_PATH": container_path(request.output_path),
+                "REFERENCE_AUDIO_PATH": container_path(request.reference_audio_path),
+                "REFERENCE_TEXT": request.reference_text,
+                "MODELSCOPE_CACHE": "/workspace/.cache/modelscope",
+            },
+        )
+
+
+class DockerBackedQwen3TtsAdapter(BaseAdapter):
+    def __init__(self, model_id: str, context: BenchmarkContext) -> None:
+        super().__init__(model_id, context)
+        docker_dir = Path.cwd() / "docker" / "tts" / "qwen3tts"
+        ensure_image("otu-tts-bench-qwen3tts:latest", docker_dir)
+
+    def synthesize(self, request: SynthesisRequest) -> None:
+        if request.reference_audio_path is None:
+            raise AdapterError("Qwen3-TTS requires a reference audio prompt.")
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        run_container(
+            image_tag="otu-tts-bench-qwen3tts:latest",
+            wants_gpu=self.context.device == "cuda",
+            env={
+                "MODEL_ID": self.model_id,
+                "TEXT": request.text,
+                "OUTPUT_PATH": container_path(request.output_path),
+                "REFERENCE_AUDIO_PATH": container_path(request.reference_audio_path),
+                "REFERENCE_TEXT": request.reference_text,
+                "LANGUAGE": _qwen3_language(self.context.language, request.locale),
+            },
+        )
+
+
+class DockerBackedDia2Adapter(BaseAdapter):
+    def __init__(self, model_id: str, context: BenchmarkContext) -> None:
+        super().__init__(model_id, context)
+        docker_dir = Path.cwd() / "docker" / "tts" / "dia2"
+        ensure_image("otu-tts-bench-dia2:latest", docker_dir)
+
+    def synthesize(self, request: SynthesisRequest) -> None:
+        if request.reference_audio_path is None:
+            raise AdapterError("Dia2 requires a reference audio prompt.")
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        run_container(
+            image_tag="otu-tts-bench-dia2:latest",
+            wants_gpu=self.context.device == "cuda",
+            env={
+                "MODEL_ID": self.model_id,
+                "TEXT": request.text,
+                "OUTPUT_PATH": container_path(request.output_path),
+                "REFERENCE_AUDIO_PATH": container_path(request.reference_audio_path),
+            },
+        )
+
+
+class DockerBackedGlmTtsAdapter(BaseAdapter):
+    def __init__(self, model_id: str, context: BenchmarkContext) -> None:
+        super().__init__(model_id, context)
+        docker_dir = Path.cwd() / "docker" / "tts" / "glmtts"
+        ensure_image("otu-tts-bench-glmtts:latest", docker_dir)
+
+    def synthesize(self, request: SynthesisRequest) -> None:
+        if request.reference_audio_path is None:
+            raise AdapterError("GLM-TTS requires a reference audio prompt.")
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        run_container(
+            image_tag="otu-tts-bench-glmtts:latest",
+            wants_gpu=self.context.device == "cuda",
+            env={
+                "MODEL_ID": self.model_id,
+                "TEXT": request.text,
+                "OUTPUT_PATH": container_path(request.output_path),
+                "REFERENCE_AUDIO_PATH": container_path(request.reference_audio_path),
+                "REFERENCE_TEXT": request.reference_text,
+            },
+        )
+
+
 class DockerBackedOrpheusTtsAdapter(BaseAdapter):
     def __init__(self, model_id: str, context: BenchmarkContext) -> None:
         super().__init__(model_id, context)
@@ -292,6 +385,14 @@ def create_adapter(engine: str, model_id: str, context: BenchmarkContext) -> Bas
         return ChatterboxAdapter(model_id, context)
     if engine == "f5-tts":
         return DockerBackedF5TtsAdapter(model_id, context)
+    if engine == "voxcpm":
+        return DockerBackedVoxCpmAdapter(model_id, context)
+    if engine == "qwen3-tts":
+        return DockerBackedQwen3TtsAdapter(model_id, context)
+    if engine == "dia2":
+        return DockerBackedDia2Adapter(model_id, context)
+    if engine == "glm-tts":
+        return DockerBackedGlmTtsAdapter(model_id, context)
     if engine == "orpheus-tts":
         return DockerBackedOrpheusTtsAdapter(model_id, context)
     if engine == "xtts-v2":
@@ -328,3 +429,22 @@ def _xtts_language(language: str, locale: str) -> str:
     if normalized == "fr-ca":
         return "fr"
     return language.strip().lower() or "fr"
+
+
+def _qwen3_language(language: str, locale: str) -> str:
+    normalized = locale.strip().lower()
+    if normalized == "fr-ca":
+        return "French"
+    mapping = {
+        "fr": "French",
+        "en": "English",
+        "de": "German",
+        "es": "Spanish",
+        "it": "Italian",
+        "ja": "Japanese",
+        "ko": "Korean",
+        "pt": "Portuguese",
+        "ru": "Russian",
+        "zh": "Chinese",
+    }
+    return mapping.get(language.strip().lower(), "French")
