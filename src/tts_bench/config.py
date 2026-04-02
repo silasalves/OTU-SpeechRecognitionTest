@@ -77,6 +77,22 @@ MODEL_SPECS: tuple[ModelSpec, ...] = (
         notes="Docker-backed Qwen3-TTS 0.6B voice-cloning model. Uses the official qwen-tts package through a CUDA container built on the official PyTorch runtime image.",
     ),
     ModelSpec(
+        engine="cosyvoice2",
+        model_id="FunAudioLLM/CosyVoice2-0.5B",
+        package_extra="",
+        enabled_by_default=False,
+        supports_locales=("fr", "fr-ca"),
+        notes="Docker-backed CosyVoice2 0.5B run. The upstream checkpoint does not ship built-in SFT speakers, so this repo's no-clone path injects the upstream fixed-speaker cache and runs inference_sft() against the English-translated interview-2/interview-3 smoke pair used for the repo's out-of-language baselines.",
+    ),
+    ModelSpec(
+        engine="vibevoice",
+        model_id="microsoft/VibeVoice-Realtime-0.5B",
+        package_extra="",
+        enabled_by_default=False,
+        supports_locales=("fr", "fr-ca"),
+        notes="Dedicated-venv VibeVoice Realtime 0.5B run around the official Microsoft repo. This repo currently validates the official single-speaker realtime path with the bundled experimental French voice presets rather than the disabled long-form VibeVoice-TTS path.",
+    ),
+    ModelSpec(
         engine="dia2",
         model_id="nari-labs/Dia2-1B",
         package_extra="",

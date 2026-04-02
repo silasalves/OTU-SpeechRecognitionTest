@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import subprocess
 
 import numpy as np
 import soundfile as sf
@@ -263,6 +264,91 @@ class DockerBackedQwen3TtsAdapter(BaseAdapter):
         )
 
 
+class DockerBackedCosyVoice2Adapter(BaseAdapter):
+    def __init__(self, model_id: str, context: BenchmarkContext) -> None:
+        super().__init__(model_id, context)
+        docker_dir = Path.cwd() / "docker" / "tts" / "cosyvoice2"
+        ensure_image("otu-tts-bench-cosyvoice2:latest", docker_dir)
+
+    def synthesize(self, request: SynthesisRequest) -> None:
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        run_container(
+            image_tag="otu-tts-bench-cosyvoice2:latest",
+            wants_gpu=self.context.device == "cuda",
+            env={
+                "MODEL_ID": self.model_id,
+                "TEXT": request.text,
+                "OUTPUT_PATH": container_path(request.output_path),
+                "SPEAKER_ID": os.environ.get(
+                    "TTS_BENCH_COSYVOICE2_SPEAKER_ID",
+                    "longxiaoxia",
+                ),
+                "SPK2INFO_URL": os.environ.get(
+                    "TTS_BENCH_COSYVOICE2_SPK2INFO_URL",
+                    "https://raw.githubusercontent.com/qi-hua/async_cosyvoice/main/CosyVoice2-0.5B/spk2info.pt",
+                ),
+                "TEXT_FRONTEND": os.environ.get(
+                    "TTS_BENCH_COSYVOICE2_TEXT_FRONTEND",
+                    "false",
+                ),
+            },
+        )
+
+
+class LocalVenvVibeVoiceAdapter(BaseAdapter):
+    def __init__(self, model_id: str, context: BenchmarkContext) -> None:
+        super().__init__(model_id, context)
+        self._venv_python = _resolve_vibevoice_python()
+        self._repo_path = Path.cwd() / ".tmp" / "VibeVoice-official"
+        self._runner_path = Path.cwd() / "tools" / "vibevoice" / "run_vibevoice.py"
+        if not self._venv_python.exists():
+            raise AdapterError(
+                "VibeVoice venv is not installed. Run "
+                ".\\scripts\\install-tts-backends.ps1 -Engine vibevoice first."
+            )
+        if not self._repo_path.exists():
+            raise AdapterError(
+                "Official VibeVoice repo is missing at .tmp/VibeVoice-official. "
+                "Run .\\scripts\\install-tts-backends.ps1 -Engine vibevoice first."
+            )
+        if not self._runner_path.exists():
+            raise AdapterError(f"VibeVoice runner script is missing: {self._runner_path}")
+
+    def synthesize(self, request: SynthesisRequest) -> None:
+        request.output_path.parent.mkdir(parents=True, exist_ok=True)
+        env = os.environ.copy()
+        env.update(
+            {
+                "MODEL_ID": self.model_id,
+                "TEXT": request.text,
+                "OUTPUT_PATH": str(request.output_path),
+                "LOCALE": request.locale,
+                "LANGUAGE": self.context.language,
+                "DEVICE": self.context.device,
+                "REPO_ROOT": str(Path.cwd()),
+                "SPEAKER_NAME": os.environ.get("TTS_BENCH_VIBEVOICE_SPEAKER_NAME", ""),
+                "CFG_SCALE": os.environ.get("TTS_BENCH_VIBEVOICE_CFG_SCALE", "1.5"),
+                "DDPM_STEPS": os.environ.get("TTS_BENCH_VIBEVOICE_DDPM_STEPS", "5"),
+                "PYTHONIOENCODING": "utf-8",
+            }
+        )
+        result = subprocess.run(
+            [str(self._venv_python), str(self._runner_path)],
+            cwd=Path.cwd(),
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        if result.returncode != 0:
+            raise AdapterError(
+                "VibeVoice local runner failed: "
+                f"{_tail_text(result.stderr or result.stdout)}"
+            )
+
+
 class DockerBackedDia2Adapter(BaseAdapter):
     def __init__(self, model_id: str, context: BenchmarkContext) -> None:
         super().__init__(model_id, context)
@@ -389,6 +475,10 @@ def create_adapter(engine: str, model_id: str, context: BenchmarkContext) -> Bas
         return DockerBackedVoxCpmAdapter(model_id, context)
     if engine == "qwen3-tts":
         return DockerBackedQwen3TtsAdapter(model_id, context)
+    if engine == "cosyvoice2":
+        return DockerBackedCosyVoice2Adapter(model_id, context)
+    if engine == "vibevoice":
+        return LocalVenvVibeVoiceAdapter(model_id, context)
     if engine == "dia2":
         return DockerBackedDia2Adapter(model_id, context)
     if engine == "glm-tts":
@@ -448,3 +538,22 @@ def _qwen3_language(language: str, locale: str) -> str:
         "zh": "Chinese",
     }
     return mapping.get(language.strip().lower(), "French")
+
+
+def _resolve_vibevoice_python() -> Path:
+    root = Path.cwd()
+    candidates = (
+        root / ".venvs" / "vibevoice" / "Scripts" / "python.exe",
+        root / ".venvs" / "vibevoice" / "bin" / "python",
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+def _tail_text(value: str, limit: int = 600) -> str:
+    cleaned = " ".join(value.strip().split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[-limit:]
